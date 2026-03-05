@@ -1,14 +1,24 @@
 <?php
 /**
+ * BetterSOMM WordPress Plugin
+ * © 2026 Mariano de Iriondo (Gorilion)
+ *
+ * Proprietary software. All rights reserved.
+ * WordPress integration for AI-powered wine recommendations.
+ *
  * Plugin Name:       BetterSOMM
  * Plugin URI:        https://bettersomm.com
  * Description:       Embed an AI-powered wine finder on any page using the [bettersomm] shortcode.
  * Version:           1.0.3
+ * Creator:           Mariano de Iriondo (Gorilion)
+ * Creator URI:       https://gorilion.com
+ * Author:            Mariano de Iriondo
+ * Author URI:        https://marianodeiriondo.com
+ * Author Email:      mariano@gorilion.com
+ * License:           Proprietary
+ * License URI:       https://bettersomm.com/license
  * Requires at least: 6.0
  * Requires PHP:      7.4
- * Author:            Gorilion
- * Author URI:        https://gorilion.com
- * License:           GPL v2 or later
  * Text Domain:       bettersomm
  */
 
