@@ -11,11 +11,16 @@ class SommAI_Shortcode {
      * [sommai] shortcode.
      *
      * Supported attributes (all optional — fall back to admin settings):
-     *   title        Widget heading text
-     *   locale       "es" or "en"
-     *   accent       Hex color e.g. #8B1A1A
-     *   placeholder  Search input placeholder text
-     *   c7tenant     Commerce7 tenant ID override
+     *   title              Widget heading text
+     *   locale             "es" or "en"
+     *   accent             Hex color e.g. #8B1A1A
+     *   placeholder        Search input placeholder text
+     *   cart_provider      commerce7 | woocommerce | ecellar | custom
+     *   cart_c7tenant      Commerce7 tenant ID
+     *   cart_wc_endpoint   WooCommerce Store API endpoint URL
+     *   cart_wc_nonce      WooCommerce nonce
+     *   cart_ecellar_url   eCellar store base URL
+     *   cart_custom_url    Custom URL template with {product_id}
      */
     public static function render( $atts ) {
         $opts = SommAI_Admin::get_opts();
@@ -23,11 +28,16 @@ class SommAI_Shortcode {
         // Merge shortcode atts over defaults from settings
         $atts = shortcode_atts(
             array(
-                'title'       => $opts['widget_title'] ?? '',
-                'locale'      => $opts['locale'] ?? 'es',
-                'accent'      => $opts['accent_color'] ?? '#6b2737',
-                'placeholder' => '',
-                'c7tenant'    => $opts['c7_tenant'] ?? '',
+                'title'            => $opts['widget_title'] ?? '',
+                'locale'           => $opts['locale'] ?? 'es',
+                'accent'           => $opts['accent_color'] ?? '#6b2737',
+                'placeholder'      => '',
+                'cart_provider'    => $opts['cart_provider'] ?? '',
+                'cart_c7tenant'    => $opts['cart_c7_tenant'] ?? '',
+                'cart_wc_endpoint' => $opts['cart_wc_endpoint'] ?? '',
+                'cart_wc_nonce'    => $opts['cart_wc_nonce'] ?? '',
+                'cart_ecellar_url' => $opts['cart_ecellar_url'] ?? '',
+                'cart_custom_url'  => $opts['cart_custom_url'] ?? '',
             ),
             $atts,
             'sommai'
@@ -78,8 +88,27 @@ class SommAI_Shortcode {
         if ( $suggestions_json ) {
             $data['data-suggestions'] = esc_attr( $suggestions_json );
         }
-        if ( ! empty( $atts['c7tenant'] ) ) {
-            $data['data-c7-tenant'] = esc_attr( $atts['c7tenant'] );
+
+        // Build cart config JSON if a provider is set
+        $cart_provider = $atts['cart_provider'];
+        if ( ! empty( $cart_provider ) ) {
+            $cart = array( 'provider' => $cart_provider );
+            switch ( $cart_provider ) {
+                case 'commerce7':
+                    if ( ! empty( $atts['cart_c7tenant'] ) ) $cart['c7_tenant'] = $atts['cart_c7tenant'];
+                    break;
+                case 'woocommerce':
+                    if ( ! empty( $atts['cart_wc_endpoint'] ) ) $cart['wc_endpoint'] = $atts['cart_wc_endpoint'];
+                    if ( ! empty( $atts['cart_wc_nonce'] ) )    $cart['wc_nonce']    = $atts['cart_wc_nonce'];
+                    break;
+                case 'ecellar':
+                    if ( ! empty( $atts['cart_ecellar_url'] ) ) $cart['ecellar_url'] = $atts['cart_ecellar_url'];
+                    break;
+                case 'custom':
+                    if ( ! empty( $atts['cart_custom_url'] ) ) $cart['custom_url'] = $atts['cart_custom_url'];
+                    break;
+            }
+            $data['data-cart'] = esc_attr( wp_json_encode( $cart ) );
         }
 
         $attr_string = '';

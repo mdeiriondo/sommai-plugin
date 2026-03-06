@@ -44,6 +44,7 @@ class SommAI_Admin {
         }
 
         wp_localize_script( 'sommai-admin', 'saSommAISuggestions', $suggestions );
+        wp_localize_script( 'sommai-admin', 'saSommAICartProvider', $opts['cart_provider'] ?? '' );
     }
 
     public static function add_menu() {
@@ -67,9 +68,14 @@ class SommAI_Admin {
         add_settings_section( 'sommai_suggestions', 'Search Suggestions', array( __CLASS__, 'section_suggestions_desc' ), 'sommai' );
         add_settings_field( 'suggestions', 'Suggestions', array( __CLASS__, 'field_suggestions' ), 'sommai', 'sommai_suggestions' );
 
-        // ── Commerce7 ────────────────────────────────────────────────
-        add_settings_section( 'sommai_c7', 'Commerce7 Integration', '__return_false', 'sommai' );
-        add_settings_field( 'c7_tenant', 'Tenant ID', array( __CLASS__, 'field_c7_tenant' ), 'sommai', 'sommai_c7' );
+        // ── Cart Integration ─────────────────────────────────────────
+        add_settings_section( 'sommai_cart', 'Cart Integration', array( __CLASS__, 'section_cart_desc' ), 'sommai' );
+        add_settings_field( 'cart_provider',    'Provider',            array( __CLASS__, 'field_cart_provider' ),    'sommai', 'sommai_cart' );
+        add_settings_field( 'cart_c7_tenant',   'Tenant ID',           array( __CLASS__, 'field_cart_c7_tenant' ),   'sommai', 'sommai_cart', array( 'class' => 'sa-cart-row sa-cart-row-commerce7' ) );
+        add_settings_field( 'cart_wc_endpoint', 'Store API Endpoint',  array( __CLASS__, 'field_cart_wc_endpoint' ), 'sommai', 'sommai_cart', array( 'class' => 'sa-cart-row sa-cart-row-woocommerce' ) );
+        add_settings_field( 'cart_wc_nonce',    'Nonce',               array( __CLASS__, 'field_cart_wc_nonce' ),    'sommai', 'sommai_cart', array( 'class' => 'sa-cart-row sa-cart-row-woocommerce' ) );
+        add_settings_field( 'cart_ecellar_url', 'Store Base URL',      array( __CLASS__, 'field_cart_ecellar_url' ), 'sommai', 'sommai_cart', array( 'class' => 'sa-cart-row sa-cart-row-ecellar' ) );
+        add_settings_field( 'cart_custom_url',  'Add-to-Cart URL',     array( __CLASS__, 'field_cart_custom_url' ),  'sommai', 'sommai_cart', array( 'class' => 'sa-cart-row sa-cart-row-custom' ) );
 
         // ── Developer (rows hidden by default via JS + .sa-dev-row class) ───
         add_settings_section( 'sommai_dev', 'Developer', array( __CLASS__, 'section_dev_header' ), 'sommai' );
@@ -85,7 +91,14 @@ class SommAI_Admin {
         $clean['widget_title'] = sanitize_text_field( $input['widget_title'] ?? '' );
         $clean['accent_color'] = sanitize_hex_color( $input['accent_color'] ?? '' ) ?: '#6b2737';
         $clean['cdn_url']      = esc_url_raw( $input['cdn_url'] ?? '' );
-        $clean['c7_tenant']    = sanitize_text_field( $input['c7_tenant'] ?? '' );
+
+        $valid_providers = array( '', 'commerce7', 'woocommerce', 'ecellar', 'custom' );
+        $clean['cart_provider']    = in_array( $input['cart_provider'] ?? '', $valid_providers, true ) ? $input['cart_provider'] : '';
+        $clean['cart_c7_tenant']   = sanitize_text_field( $input['cart_c7_tenant'] ?? '' );
+        $clean['cart_wc_endpoint'] = esc_url_raw( $input['cart_wc_endpoint'] ?? '' );
+        $clean['cart_wc_nonce']    = sanitize_text_field( $input['cart_wc_nonce'] ?? '' );
+        $clean['cart_ecellar_url'] = esc_url_raw( rtrim( $input['cart_ecellar_url'] ?? '', '/' ) );
+        $clean['cart_custom_url']  = sanitize_text_field( $input['cart_custom_url'] ?? '' );
 
         $raw = $input['suggestions'] ?? array();
         if ( is_array( $raw ) ) {
@@ -271,13 +284,78 @@ class SommAI_Admin {
         <?php
     }
 
-    public static function field_c7_tenant() {
+    public static function section_cart_desc() {
+        echo '<p>Connect your store to show an <strong>Add to Cart</strong> button on each wine card. Select a provider below &mdash; leave blank to hide the button.</p>';
+    }
+
+    public static function field_cart_provider() {
+        $opts     = self::get_opts();
+        $provider = $opts['cart_provider'] ?? '';
+        ?>
+        <select name="<?php echo esc_attr( SOMMAI_OPTION ); ?>[cart_provider]" id="sa-cart-provider">
+            <option value=""             <?php selected( $provider, '' ); ?>>— Disabled —</option>
+            <option value="commerce7"   <?php selected( $provider, 'commerce7' ); ?>>Commerce7</option>
+            <option value="woocommerce" <?php selected( $provider, 'woocommerce' ); ?>>WooCommerce</option>
+            <option value="ecellar"     <?php selected( $provider, 'ecellar' ); ?>>eCellar</option>
+            <option value="custom"      <?php selected( $provider, 'custom' ); ?>>Custom URL</option>
+        </select>
+        <?php
+    }
+
+    public static function field_cart_c7_tenant() {
         $opts = self::get_opts();
         ?>
-        <input type="text" name="<?php echo esc_attr( SOMMAI_OPTION ); ?>[c7_tenant]"
-            value="<?php echo esc_attr( $opts['c7_tenant'] ?? '' ); ?>" class="regular-text"
+        <input type="text" name="<?php echo esc_attr( SOMMAI_OPTION ); ?>[cart_c7_tenant]"
+            value="<?php echo esc_attr( $opts['cart_c7_tenant'] ?? '' ); ?>" class="regular-text"
             placeholder="my-winery" />
-        <p class="description">Your Commerce7 tenant ID. When set, wine cards show an <strong>Add to Cart</strong> button. Leave blank to disable.</p>
+        <p class="description">Your Commerce7 tenant ID (the subdomain of your C7 store, e.g. <code>my-winery</code>).</p>
+        <?php
+    }
+
+    public static function field_cart_wc_endpoint() {
+        $opts = self::get_opts();
+        // Auto-generate default endpoint from site URL
+        $default = rtrim( get_site_url(), '/' ) . '/wp-json/wc/store/v1/cart/add-item';
+        ?>
+        <input type="url" name="<?php echo esc_attr( SOMMAI_OPTION ); ?>[cart_wc_endpoint]"
+            value="<?php echo esc_attr( $opts['cart_wc_endpoint'] ?: $default ); ?>" class="regular-text" />
+        <p class="description">WooCommerce Store API add-item endpoint. Usually <code>/wp-json/wc/store/v1/cart/add-item</code>.</p>
+        <?php
+    }
+
+    public static function field_cart_wc_nonce() {
+        $opts  = self::get_opts();
+        // Auto-generate nonce for convenience
+        $nonce = $opts['cart_wc_nonce'] ?: wp_create_nonce( 'wc_store_api' );
+        ?>
+        <input type="text" name="<?php echo esc_attr( SOMMAI_OPTION ); ?>[cart_wc_nonce]"
+            value="<?php echo esc_attr( $nonce ); ?>" class="regular-text"
+            autocomplete="off" />
+        <p class="description">WooCommerce nonce for the Store API. Auto-generated above &mdash; save to lock it in. Regenerates on each page load if left unchanged.</p>
+        <?php
+    }
+
+    public static function field_cart_ecellar_url() {
+        $opts = self::get_opts();
+        ?>
+        <input type="url" name="<?php echo esc_attr( SOMMAI_OPTION ); ?>[cart_ecellar_url]"
+            value="<?php echo esc_attr( $opts['cart_ecellar_url'] ?? '' ); ?>" class="regular-text"
+            placeholder="https://store.mywinery.com" />
+        <p class="description">
+            Your eCellar store base URL (e.g. <code>https://store.mywinery.com</code>).
+            Clicking <em>Add to Cart</em> opens a new tab with the eCellar deep-link
+            <code>?ec_add_to_cart={product_id}:1</code> appended.
+        </p>
+        <?php
+    }
+
+    public static function field_cart_custom_url() {
+        $opts = self::get_opts();
+        ?>
+        <input type="text" name="<?php echo esc_attr( SOMMAI_OPTION ); ?>[cart_custom_url]"
+            value="<?php echo esc_attr( $opts['cart_custom_url'] ?? '' ); ?>" class="regular-text"
+            placeholder="https://mystore.com/cart/add?id={product_id}" />
+        <p class="description">URL template opened in a new tab. Use <code>{product_id}</code> as a placeholder for the product ID.</p>
         <?php
     }
 
@@ -339,7 +417,7 @@ class SommAI_Admin {
                     <tr><td><code>[sommai]</code></td><td>Widget with all settings from this page.</td></tr>
                     <tr><td><code>[sommai title="Find your wine"]</code></td><td>Override the widget title.</td></tr>
                     <tr><td><code>[sommai locale="en" accent="#8B1A1A"]</code></td><td>Override language and accent color.</td></tr>
-                    <tr><td><code>[sommai c7tenant="my-winery"]</code></td><td>Override Commerce7 tenant ID.</td></tr>
+                    <tr><td><code>[sommai cart_provider="commerce7" cart_c7tenant="my-winery"]</code></td><td>Override cart provider (any provider attrs supported).</td></tr>
                 </tbody>
             </table>
         </div>

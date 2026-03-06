@@ -41,14 +41,19 @@ function sommai_activate() {
         // Pre-populate with the same 6 default suggestions shown in the widget
         $default_suggestions = implode( "\n", SommAI_Admin::DEFAULT_SUGGESTIONS );
         update_option( SOMMAI_OPTION, array(
-            'license_key'  => '',
-            'worker_url'   => 'https://sommai-worker.miriondo-f3d.workers.dev',
-            'locale'       => 'es',
-            'widget_title' => '',
-            'accent_color' => '#6b2737',
-            'cdn_url'      => '',
-            'suggestions'  => $default_suggestions,
-            'c7_tenant'    => '',
+            'license_key'      => '',
+            'worker_url'       => 'https://sommai-worker.miriondo-f3d.workers.dev',
+            'locale'           => 'es',
+            'widget_title'     => '',
+            'accent_color'     => '#6b2737',
+            'cdn_url'          => '',
+            'suggestions'      => $default_suggestions,
+            'cart_provider'    => '',
+            'cart_c7_tenant'   => '',
+            'cart_wc_endpoint' => '',
+            'cart_wc_nonce'    => '',
+            'cart_ecellar_url' => '',
+            'cart_custom_url'  => '',
         ) );
     }
 }

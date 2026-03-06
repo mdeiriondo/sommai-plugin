@@ -21,6 +21,27 @@
     devToggle.addEventListener('change', applyDevMode);
   }
 
+  // ── Cart provider visibility ──────────────────────────────────────
+  var cartProviderSelect = document.getElementById('sa-cart-provider');
+
+  function applyCartProvider() {
+    var provider = cartProviderSelect ? cartProviderSelect.value : (window.saSommAICartProvider || '');
+    var allCartRows = document.querySelectorAll('.sa-cart-row');
+    allCartRows.forEach(function (el) { el.style.display = 'none'; });
+    if (provider) {
+      var activeRows = document.querySelectorAll('.sa-cart-row-' + provider);
+      activeRows.forEach(function (el) { el.style.display = ''; });
+    }
+  }
+
+  if (cartProviderSelect) {
+    applyCartProvider();
+    cartProviderSelect.addEventListener('change', applyCartProvider);
+  } else {
+    // Fallback: apply on load using PHP-provided value
+    applyCartProvider();
+  }
+
   // ── Suggestions dynamic list ──────────────────────────────────────
   var container = document.getElementById('sa-suggestions-list');
   var addBtn    = document.getElementById('sa-add-suggestion');
