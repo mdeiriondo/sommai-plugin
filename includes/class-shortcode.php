@@ -1,14 +1,14 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
-class BetterSOMM_Shortcode {
+class SommAI_Shortcode {
 
     public static function init() {
-        add_shortcode( 'bettersomm', array( __CLASS__, 'render' ) );
+        add_shortcode( 'sommai', array( __CLASS__, 'render' ) );
     }
 
     /**
-     * [bettersomm] shortcode.
+     * [sommai] shortcode.
      *
      * Supported attributes (all optional — fall back to admin settings):
      *   title        Widget heading text
@@ -18,7 +18,7 @@ class BetterSOMM_Shortcode {
      *   c7tenant     Commerce7 tenant ID override
      */
     public static function render( $atts ) {
-        $opts = BetterSOMM_Admin::get_opts();
+        $opts = SommAI_Admin::get_opts();
 
         // Merge shortcode atts over defaults from settings
         $atts = shortcode_atts(
@@ -30,7 +30,7 @@ class BetterSOMM_Shortcode {
                 'c7tenant'    => $opts['c7_tenant'] ?? '',
             ),
             $atts,
-            'bettersomm'
+            'sommai'
         );
 
         $license    = $opts['license_key'] ?? '';
@@ -39,10 +39,10 @@ class BetterSOMM_Shortcode {
         // Bail early with a helpful message if not configured (only visible to admins)
         if ( empty( $license ) || empty( $worker_url ) ) {
             if ( current_user_can( 'manage_options' ) ) {
-                $url = admin_url( 'options-general.php?page=bettersomm' );
+                $url = admin_url( 'options-general.php?page=sommai' );
                 return sprintf(
                     '<p style="padding:16px;background:#fff3cd;border:1px solid #ffc107;border-radius:6px;">' .
-                    '🍷 <strong>BetterSOMM:</strong> <a href="%s">Complete the setup</a> to display the wine finder.' .
+                    '🍷 <strong>SommAI:</strong> <a href="%s">Complete the setup</a> to display the wine finder.' .
                     '</p>',
                     esc_url( $url )
                 );
@@ -60,7 +60,7 @@ class BetterSOMM_Shortcode {
 
         // Build data attributes — values are escaped for HTML attribute context
         $data = array(
-            'data-bettersomm' => '',
+            'data-sommai' => '',
             'data-worker'     => esc_url( $worker_url ),
             'data-license'    => esc_attr( $license ),
             'data-locale'     => esc_attr( $atts['locale'] ),
@@ -84,7 +84,7 @@ class BetterSOMM_Shortcode {
 
         $attr_string = '';
         foreach ( $data as $key => $value ) {
-            if ( $value === '' && $key === 'data-bettersomm' ) {
+            if ( $value === '' && $key === 'data-sommai' ) {
                 $attr_string .= ' ' . $key;
             } else {
                 $attr_string .= sprintf( ' %s="%s"', $key, $value );
@@ -95,7 +95,7 @@ class BetterSOMM_Shortcode {
     }
 
     private static function enqueue_widget( array $opts ) {
-        if ( wp_script_is( 'bettersomm-widget', 'enqueued' ) ) {
+        if ( wp_script_is( 'sommai-widget', 'enqueued' ) ) {
             return;
         }
 
@@ -104,14 +104,14 @@ class BetterSOMM_Shortcode {
         if ( $cdn ) {
             $src = esc_url( $cdn );
         } else {
-            $src = BETTERSOMM_URL . 'assets/bettersomm.min.js';
+            $src = SOMMAI_URL . 'assets/sommai.min.js';
         }
 
         wp_enqueue_script(
-            'bettersomm-widget',
+            'sommai-widget',
             $src,
             array(),           // no WP dependencies
-            BETTERSOMM_VERSION,
+            SOMMAI_VERSION,
             array(
                 'strategy'  => 'defer',
                 'in_footer' => true,
