@@ -18,6 +18,8 @@ class BetterSOMM_Admin {
         add_action( 'admin_init',            array( __CLASS__, 'register_settings' ) );
         add_action( 'admin_notices',         array( __CLASS__, 'maybe_show_setup_notice' ) );
         add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_admin_assets' ) );
+        // Re-activate when BetterSEO is activated while BetterSOMM is already configured
+        add_action( 'activated_plugin',      array( __CLASS__, 'on_plugin_activated' ) );
     }
 
     public static function enqueue_admin_assets( $hook ) {
@@ -53,8 +55,7 @@ class BetterSOMM_Admin {
 
         // ── Connection ───────────────────────────────────────────────
         add_settings_section( 'bettersomm_connection', 'Connection', '__return_false', 'bettersomm' );
-        add_settings_field( 'license_key', 'License Key',   array( __CLASS__, 'field_license_key' ),  'bettersomm', 'bettersomm_connection' );
-        add_settings_field( 'catalog_url', 'Product Feed URL', array( __CLASS__, 'field_catalog_url' ), 'bettersomm', 'bettersomm_connection' );
+        add_settings_field( 'license_key', 'License Key', array( __CLASS__, 'field_license_key' ), 'bettersomm', 'bettersomm_connection' );
 
         // ── Widget ───────────────────────────────────────────────────
         add_settings_section( 'bettersomm_widget', 'Widget', '__return_false', 'bettersomm' );
@@ -72,15 +73,14 @@ class BetterSOMM_Admin {
 
         // ── Developer (rows hidden by default via JS + .bs-dev-row class) ───
         add_settings_section( 'bettersomm_dev', 'Developer', array( __CLASS__, 'section_dev_header' ), 'bettersomm' );
-        add_settings_field( 'worker_url', 'Worker URL',     array( __CLASS__, 'field_worker_url' ), 'bettersomm', 'bettersomm_dev', array( 'class' => 'bs-dev-row' ) );
-        add_settings_field( 'cdn_url',    'Custom JS URL',  array( __CLASS__, 'field_cdn_url' ),    'bettersomm', 'bettersomm_dev', array( 'class' => 'bs-dev-row' ) );
+        add_settings_field( 'worker_url', 'Worker URL',    array( __CLASS__, 'field_worker_url' ), 'bettersomm', 'bettersomm_dev', array( 'class' => 'bs-dev-row' ) );
+        add_settings_field( 'cdn_url',    'Custom JS URL', array( __CLASS__, 'field_cdn_url' ),    'bettersomm', 'bettersomm_dev', array( 'class' => 'bs-dev-row' ) );
     }
 
     public static function sanitize_settings( $input ) {
         $clean = array();
         $clean['license_key']  = sanitize_text_field( $input['license_key'] ?? '' );
         $clean['worker_url']   = esc_url_raw( rtrim( $input['worker_url'] ?? '', '/' ) );
-        $clean['catalog_url']  = esc_url_raw( $input['catalog_url'] ?? '' );
         $clean['locale']       = in_array( $input['locale'] ?? '', array( 'es', 'en' ), true ) ? $input['locale'] : 'es';
         $clean['widget_title'] = sanitize_text_field( $input['widget_title'] ?? '' );
         $clean['accent_color'] = sanitize_hex_color( $input['accent_color'] ?? '' ) ?: '#6b2737';
@@ -95,28 +95,135 @@ class BetterSOMM_Admin {
         }
         $clean['suggestions'] = implode( "\n", $lines );
 
+        // If license key is set, call activation endpoint (connects catalog to key)
+        if ( ! empty( $clean['license_key'] ) ) {
+            $current = self::get_opts();
+            // Activate if key changed, or if no activation record exists yet
+            if ( ( $current['license_key'] ?? '' ) !== $clean['license_key'] ||
+                 false === get_option( 'bettersomm_activation' ) ) {
+                self::maybe_call_activate_endpoint( $clean );
+            }
+        }
+
         return $clean;
+    }
+
+    /**
+     * Calls /license/activate on the worker with the license key and
+     * the BetterSEO feed URL (if available). Stores the result.
+     */
+    public static function maybe_call_activate_endpoint( $settings ) {
+        $worker_url  = rtrim( $settings['worker_url'] ?? 'https://bettersomm-worker.miriondo-f3d.workers.dev', '/' );
+        $license_key = $settings['license_key'] ?? '';
+        if ( ! $license_key ) return;
+
+        // Detect BetterSEO feed URL automatically
+        $catalog_url = self::get_betterseo_feed_url();
+        $domain      = parse_url( home_url(), PHP_URL_HOST );
+
+        $body = array( 'license_key' => $license_key );
+        if ( $catalog_url ) $body['catalog_url'] = $catalog_url;
+        if ( $domain )      $body['domain']      = $domain;
+
+        $response = wp_remote_post(
+            $worker_url . '/license/activate',
+            array(
+                'timeout' => 5,
+                'headers' => array( 'Content-Type' => 'application/json' ),
+                'body'    => wp_json_encode( $body ),
+            )
+        );
+
+        if ( is_wp_error( $response ) ) {
+            update_option( 'bettersomm_activation', array(
+                'status'    => 'error',
+                'error'     => $response->get_error_message(),
+                'timestamp' => time(),
+            ) );
+            return;
+        }
+
+        $data = json_decode( wp_remote_retrieve_body( $response ), true );
+        if ( ! empty( $data['success'] ) ) {
+            update_option( 'bettersomm_activation', array(
+                'status'             => 'active',
+                'plan'               => $data['plan'] ?? '',
+                'catalog_configured' => ! empty( $data['catalog_configured'] ),
+                'timestamp'          => time(),
+            ) );
+        } else {
+            update_option( 'bettersomm_activation', array(
+                'status'    => 'error',
+                'error'     => $data['error'] ?? 'Activation failed',
+                'timestamp' => time(),
+            ) );
+        }
+    }
+
+    /**
+     * Returns the BetterSEO product feed URL if BetterSEO is installed and active.
+     */
+    public static function get_betterseo_feed_url() {
+        if ( function_exists( 'betterseo_get_feed_url' ) ) {
+            return betterseo_get_feed_url();
+        }
+        return '';
+    }
+
+    /**
+     * When BetterSEO is activated and BetterSOMM is already configured,
+     * re-run activation so the feed URL gets registered with the worker.
+     */
+    public static function on_plugin_activated( $plugin ) {
+        if ( strpos( $plugin, 'betterseo' ) === false ) return;
+        $opts = self::get_opts();
+        if ( ! empty( $opts['license_key'] ) ) {
+            self::maybe_call_activate_endpoint( $opts );
+        }
     }
 
     // ── Field renderers ───────────────────────────────────────────────
 
     public static function field_license_key() {
-        $opts = self::get_opts(); $val = $opts['license_key'] ?? '';
+        $opts       = self::get_opts();
+        $val        = $opts['license_key'] ?? '';
+        $activation = (array) get_option( 'bettersomm_activation', array() );
+        $status     = $activation['status'] ?? '';
         ?>
         <input type="password" name="<?php echo esc_attr( BETTERSOMM_OPTION ); ?>[license_key]"
             value="<?php echo esc_attr( $val ); ?>" class="regular-text"
             placeholder="bsomm_live_..." autocomplete="off" />
-        <p class="description">Your BetterSOMM license key. Get one at bettersomm.com.</p>
-        <?php
-    }
 
-    public static function field_catalog_url() {
-        $opts = self::get_opts();
-        ?>
-        <input type="url" name="<?php echo esc_attr( BETTERSOMM_OPTION ); ?>[catalog_url]"
-            value="<?php echo esc_attr( $opts['catalog_url'] ?? '' ); ?>" class="regular-text"
-            placeholder="https://your-store.com/product-feed.xml" />
-        <p class="description">URL of your product feed (Google Shopping XML, WooCommerce feed, or Commerce7 XML).</p>
+        <?php if ( $status === 'active' ) : ?>
+            <span style="margin-left:8px;color:#2e7d32;font-weight:500;">&#10003; Active
+                <?php if ( ! empty( $activation['plan'] ) ) : ?>
+                    &mdash; <?php echo esc_html( ucfirst( $activation['plan'] ) ); ?> plan
+                <?php endif; ?>
+            </span>
+            <?php if ( empty( $activation['catalog_configured'] ) ) : ?>
+                <p class="description" style="color:#e65100;">
+                    &#9888; Catalog not yet configured on this license.
+                    <a href="https://bettersomm.com/dashboard" target="_blank">Set it up in your dashboard</a>
+                    or install <strong>BetterSEO</strong> for automatic detection.
+                </p>
+            <?php else : ?>
+                <p class="description">Catalog connected. Your product feed is managed securely server-side.</p>
+            <?php endif; ?>
+        <?php elseif ( $status === 'error' ) : ?>
+            <span style="margin-left:8px;color:#c62828;">&#10007; <?php echo esc_html( $activation['error'] ?? 'Connection error' ); ?></span>
+            <p class="description">Save settings again to retry, or check your license key at <a href="https://bettersomm.com" target="_blank">bettersomm.com</a>.</p>
+        <?php else : ?>
+            <p class="description">Your BetterSOMM license key. Get one at <a href="https://bettersomm.com" target="_blank">bettersomm.com</a>.</p>
+        <?php endif; ?>
+
+        <?php
+        // BetterSEO detection notice
+        $betterseo_url = self::get_betterseo_feed_url();
+        if ( $betterseo_url ) : ?>
+            <p class="description" style="color:#1565c0;">
+                &#10003; <strong>BetterSEO detected</strong> &mdash; your product feed will be connected automatically.
+            </p>
+        <?php endif; ?>
         <?php
     }
 
@@ -208,7 +315,8 @@ class BetterSOMM_Admin {
     public static function render_page() {
         if ( ! current_user_can( 'manage_options' ) ) return;
         $opts       = self::get_opts();
-        $configured = ! empty( $opts['license_key'] ) && ! empty( $opts['catalog_url'] );
+        $activation = (array) get_option( 'bettersomm_activation', array() );
+        $configured = ! empty( $opts['license_key'] ) && ( $activation['status'] ?? '' ) === 'active';
         ?>
         <div class="wrap">
             <h1 style="display:flex;align-items:center;gap:10px;"><span style="font-size:1.4em;">🍷</span> BetterSOMM Settings</h1>
@@ -231,7 +339,6 @@ class BetterSOMM_Admin {
                     <tr><td><code>[bettersomm]</code></td><td>Widget with all settings from this page.</td></tr>
                     <tr><td><code>[bettersomm title="Find your wine"]</code></td><td>Override the widget title.</td></tr>
                     <tr><td><code>[bettersomm locale="en" accent="#8B1A1A"]</code></td><td>Override language and accent color.</td></tr>
-                    <tr><td><code>[bettersomm catalog="https://...xml"]</code></td><td>Override the product feed URL.</td></tr>
                     <tr><td><code>[bettersomm c7tenant="my-winery"]</code></td><td>Override Commerce7 tenant ID.</td></tr>
                 </tbody>
             </table>
@@ -242,8 +349,9 @@ class BetterSOMM_Admin {
     public static function maybe_show_setup_notice() {
         $screen = get_current_screen();
         if ( ! $screen || $screen->id === 'settings_page_bettersomm' ) return;
-        $opts = self::get_opts();
-        if ( empty( $opts['license_key'] ) || empty( $opts['catalog_url'] ) ) {
+        $opts       = self::get_opts();
+        $activation = (array) get_option( 'bettersomm_activation', array() );
+        if ( empty( $opts['license_key'] ) || ( $activation['status'] ?? '' ) !== 'active' ) {
             $url = admin_url( 'options-general.php?page=bettersomm' );
             echo '<div class="notice notice-warning is-dismissible"><p>';
             printf(

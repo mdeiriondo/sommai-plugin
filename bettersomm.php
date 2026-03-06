@@ -9,7 +9,7 @@
  * Plugin Name:       BetterSOMM
  * Plugin URI:        https://bettersomm.com
  * Description:       Embed an AI-powered wine finder on any page using the [bettersomm] shortcode.
- * Version:           1.0.3
+ * Version:           1.0.4
  * Creator:           Mariano de Iriondo (Gorilion)
  * Creator URI:       https://gorilion.com
  * Author:            Mariano de Iriondo
@@ -24,7 +24,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BETTERSOMM_VERSION', '1.0.3' );
+define( 'BETTERSOMM_VERSION', '1.0.4' );
 define( 'BETTERSOMM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'BETTERSOMM_URL', plugin_dir_url( __FILE__ ) );
 define( 'BETTERSOMM_OPTION', 'bettersomm_settings' );
@@ -43,7 +43,6 @@ function bettersomm_activate() {
         update_option( BETTERSOMM_OPTION, array(
             'license_key'  => '',
             'worker_url'   => 'https://bettersomm-worker.miriondo-f3d.workers.dev',
-            'catalog_url'  => '',
             'locale'       => 'es',
             'widget_title' => '',
             'accent_color' => '#6b2737',

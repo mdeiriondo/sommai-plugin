@@ -14,8 +14,8 @@ class BetterSOMM_Shortcode {
      *   title        Widget heading text
      *   locale       "es" or "en"
      *   accent       Hex color e.g. #8B1A1A
-     *   catalog      Override product feed URL
      *   placeholder  Search input placeholder text
+     *   c7tenant     Commerce7 tenant ID override
      */
     public static function render( $atts ) {
         $opts = BetterSOMM_Admin::get_opts();
@@ -26,7 +26,6 @@ class BetterSOMM_Shortcode {
                 'title'       => $opts['widget_title'] ?? '',
                 'locale'      => $opts['locale'] ?? 'es',
                 'accent'      => $opts['accent_color'] ?? '#6b2737',
-                'catalog'     => $opts['catalog_url'] ?? '',
                 'placeholder' => '',
                 'c7tenant'    => $opts['c7_tenant'] ?? '',
             ),
@@ -38,7 +37,7 @@ class BetterSOMM_Shortcode {
         $worker_url = $opts['worker_url'] ?? '';
 
         // Bail early with a helpful message if not configured (only visible to admins)
-        if ( empty( $license ) || empty( $worker_url ) || empty( $atts['catalog'] ) ) {
+        if ( empty( $license ) || empty( $worker_url ) ) {
             if ( current_user_can( 'manage_options' ) ) {
                 $url = admin_url( 'options-general.php?page=bettersomm' );
                 return sprintf(
@@ -61,11 +60,10 @@ class BetterSOMM_Shortcode {
 
         // Build data attributes — values are escaped for HTML attribute context
         $data = array(
-            'data-bettersomm'  => '',
-            'data-worker'      => esc_url( $worker_url ),
-            'data-license'     => esc_attr( $license ),
-            'data-catalog'     => esc_url( $atts['catalog'] ),
-            'data-locale'      => esc_attr( $atts['locale'] ),
+            'data-bettersomm' => '',
+            'data-worker'     => esc_url( $worker_url ),
+            'data-license'    => esc_attr( $license ),
+            'data-locale'     => esc_attr( $atts['locale'] ),
         );
 
         if ( ! empty( $atts['title'] ) ) {
